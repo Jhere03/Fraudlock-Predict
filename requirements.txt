@@ -1,0 +1,9 @@
+Flask==2.1.2
+flask-cors==3.0.10
+tensorflow==2.6.0
+numpy==1.19.5
+requests==2.26.0
+beautifulsoup4==4.10.0
+mysql-connector-python==8.0.26
+argparse==1.4.0
+bs4==0.0.1
