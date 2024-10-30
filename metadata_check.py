@@ -27,13 +27,13 @@ def fetch_metadata(domain):
         # Intentar primero con HTTPS
         url = f"https://{domain}"
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=20)
         response.raise_for_status()  # Lanza una excepción si el estado HTTP es 4xx/5xx
         
         # Si HTTPS falla, intenta con HTTP
         if response.status_code != 200:
             url = f"http://{domain}"
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, timeout=20)
             response.raise_for_status()
 
         soup = BeautifulSoup(response.content, 'html.parser')
