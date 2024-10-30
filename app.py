@@ -78,7 +78,7 @@ def get_url_or_domain(url, api_endpoint):
 def call_api(url, api_endpoint):
     try:
         formatted_url = get_url_or_domain(url, api_endpoint)
-        response = requests.post(api_endpoint, json={"url": formatted_url}, timeout=20)
+        response = requests.post(api_endpoint, json={"url": formatted_url}, timeout=300)
         response.raise_for_status()
         response_data = response.json()
         return response_data.get("ESTADO", "fraud")
