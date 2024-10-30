@@ -1,9 +1,5 @@
 import os
-
-# Forzar el uso de CPU en lugar de GPU en TensorFlow
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
-# Importar otras bibliotecas
+import threading  # Para manejar las llamadas a las APIs en paralelo
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import tensorflow as tf
@@ -22,17 +18,16 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
-# Probar conexión a la base de datos
+# Cargar el modelo entrenado solo una vez
+model = tf.keras.models.load_model('modelo_fraude_v2.h5')
+
+# Probar conexión a la base de datos una sola vez en el arranque
 connection = get_db_connection()
 if connection:
     print("Conexión a la base de datos exitosa")
-    connection.close()  # Cierra la conexión después de la prueba
+    connection.close()
 else:
     print("Error al conectar a la base de datos")
-
-# Cargar el modelo entrenado
-model = tf.keras.models.load_model('modelo_fraude_v2.h5')
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
 
 # Registrar las rutas de todas las APIs
@@ -56,6 +51,7 @@ def check_domain_popularity_route():
 def check_metadata_route():
     return check_metadata()
 
+
 # Funciones para el módulo de predicción
 def is_url_or_domain_in_blacklist(url, connection):
     cursor = connection.cursor()
@@ -69,25 +65,31 @@ def is_url_or_domain_in_blacklist(url, connection):
     cursor.close()
     return result[0] == 1
 
+
 def get_url_or_domain(url, api_endpoint):
     if "check_ssl" in api_endpoint or "check_metadata" in api_endpoint:
-        return url 
+        return url
     else:
         return urlparse(url).netloc
 
-def call_api(url, api_endpoint):
+
+# Función para llamar a las APIs de forma paralela
+def call_api(url, api_endpoint, results, idx):
     try:
         formatted_url = get_url_or_domain(url, api_endpoint)
-        response = requests.post(api_endpoint, json={"url": formatted_url}, timeout=300)
+        response = requests.post(api_endpoint, json={"url": formatted_url}, timeout=50)
         response.raise_for_status()
         response_data = response.json()
-        return response_data.get("ESTADO", "fraud")
+        results[idx] = response_data.get("ESTADO", "fraud")
     except:
-        return "fraud"
+        results[idx] = "fraud"
 
+
+# Optimizar para llamadas paralelas
 def get_feature_vector(url, connection):
     if is_url_or_domain_in_blacklist(url, connection):
         return np.array([0, 0, 0, 0, 0]).reshape(1, -1), 1.0
+
     apis = [
         "https://fraudlock-backend-production.up.railway.app/api/check_ssl",
         "https://fraudlock-backend-production.up.railway.app/api/check_url_similarity",
@@ -95,11 +97,23 @@ def get_feature_vector(url, connection):
         "https://fraudlock-backend-production.up.railway.app/api/check_domain_popularity",
         "https://fraudlock-backend-production.up.railway.app/api/check_metadata"
     ]
-    features = []
-    for api in apis:
-        status = call_api(url, api)
-        features.append(1 if status == "legal" else 0)
+
+    # Inicializamos los resultados en paralelo
+    results = [None] * len(apis)
+    threads = []
+
+    for idx, api in enumerate(apis):
+        thread = threading.Thread(target=call_api, args=(url, api, results, idx))
+        threads.append(thread)
+        thread.start()
+
+    # Esperar a que todos los hilos terminen
+    for thread in threads:
+        thread.join()
+
+    features = [1 if status == "legal" else 0 for status in results]
     return np.array(features).reshape(1, -1), None
+
 
 def predict_url(url, connection):
     features, manual_prob = get_feature_vector(url, connection)
@@ -109,10 +123,12 @@ def predict_url(url, connection):
         prediction = model.predict(features)
         return prediction[0][0]
 
+
 # Ruta principal para la página de inicio
 @app.route('/')
 def home():
     return "Bienvenido a Fraudlock Backend API. Para predecir una URL, usa /predict con un método POST."
+
 
 # Ruta para la predicción de URLs
 @app.route('/predict', methods=['POST'])
@@ -121,17 +137,22 @@ def predict():
     url = data.get('url')
     if not url:
         return jsonify({"error": "No URL provided"}), 400
+
     start_time = datetime.now()
     connection = get_db_connection()
     result = predict_url(url, connection)
     end_time = datetime.now()
     time_taken = round((end_time - start_time).total_seconds(), 3)
+
     features, _ = get_feature_vector(url, connection)
     features_list = features.flatten().tolist()
+
     report_manager = ReportManager(connection)
     report_manager.save_report(result, time_taken)
     connection.close()
-    return jsonify({"probability": float(result), "features": features_list}), 200
+
+    return jsonify({"probability": float(result), "features": features_list, "time_taken": time_taken}), 200
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
