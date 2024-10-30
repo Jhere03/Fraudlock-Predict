@@ -1,35 +1,30 @@
 import os
-
-# Forzar el uso de CPU en lugar de GPU en TensorFlow
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
-# Importar otras bibliotecas
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import tensorflow as tf
 import numpy as np
+import requests
+from urllib.parse import urlparse
+from datetime import datetime
+from conect_bd import get_db_connection
+from report_manager import ReportManager
 from ssl_check import check_ssl
 from url_similarity import check_url_similarity
 from domain_security import check_domain_security
 from populary_domain import check_domain_popularity
 from metadata_check import check_metadata
-from conect_bd import get_db_connection
-from report_manager import ReportManager
-from urllib.parse import urlparse
-from datetime import datetime
-import requests
 
 app = Flask(__name__)
 CORS(app)
 
-# Forzar el uso de CPU en lugar de GPU
+# Forzar uso de CPU en lugar de GPU
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 # Cargar el modelo entrenado
 model = tf.keras.models.load_model('modelo_fraude_v2.h5')
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-# Función para verificar si la URL o su dominio base está en la lista negra en la base de datos
+# Función para verificar si la URL o su dominio base está en la lista negra de la base de datos
 def is_url_or_domain_in_blacklist(url, connection):
     cursor = connection.cursor()
     
@@ -61,9 +56,9 @@ def normalize_url(url):
 # Función para determinar si se debe usar la URL completa o solo el dominio
 def get_url_or_domain(url, api_endpoint):
     if "check_ssl" in api_endpoint or "check_metadata" in api_endpoint:
-        return url  # Usamos la URL completa para estas APIs
+        return url 
     else:
-        return normalize_url(url)  # Usamos solo el dominio para las otras APIs
+        return normalize_url(url)
 
 # Función para llamar a las APIs
 def call_api(url, api_endpoint):
@@ -109,47 +104,6 @@ def predict_url(url, connection):
         prediction = model.predict(features)
         return prediction[0][0]
 
-# Ruta principal para la página de inicio
-@app.route('/')
-def home():
-    return "Bienvenido a Fraudlock Backend API. Para predecir una URL, usa /predict con un método POST."
-
-# Crear una ruta para recibir la URL y devolver el resultado
-@app.route('/predict', methods=['POST'])
-def predict():
-    data = request.get_json()
-    url = data.get('url')
-    
-    if not url or url == "":
-        return jsonify({"error": "No URL provided"}), 400
-
-    # Iniciamos el contador de tiempo
-    start_time = datetime.now()
-    
-    # Crear conexión a la base de datos
-    connection = get_db_connection()
-    
-    # Realizar la predicción
-    result = predict_url(url, connection)
-    
-    # Terminamos el contador de tiempo
-    end_time = datetime.now()
-    time_taken = (end_time - start_time).total_seconds()
-
-    # Redondear el tiempo a 3 decimales
-    time_taken = round(time_taken, 3)
-
-    features, _ = get_feature_vector(url, connection)
-    features_list = features.flatten().tolist()  # Convertir a lista simple para JSON
-
-    # Guardar en la base de datos usando report_manager
-    report_manager = ReportManager(connection)
-    report_manager.save_report(result, time_taken)
-    
-    connection.close()
-
-    return jsonify({"probability": float(result), "features": features_list}), 200
-
 # Registrar las rutas de todas las APIs
 @app.route('/api/check_ssl', methods=['POST'])
 def check_ssl_route():
@@ -170,6 +124,40 @@ def check_domain_popularity_route():
 @app.route('/api/check_metadata', methods=['POST'])
 def check_metadata_route():
     return check_metadata()
+
+# Ruta para la predicción de URLs
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.get_json()
+    url = data.get('url')
+    
+    if not url or url == "":
+        return jsonify({"error": "No URL provided"}), 400
+
+    # Iniciar el contador de tiempo
+    start_time = datetime.now()
+    
+    # Crear conexión a la base de datos
+    connection = get_db_connection()
+    
+    # Realizar la predicción
+    result = predict_url(url, connection)
+    
+    # Terminar el contador de tiempo
+    end_time = datetime.now()
+    time_taken = (end_time - start_time).total_seconds()
+    time_taken = round(time_taken, 3)
+
+    features, _ = get_feature_vector(url, connection)
+    features_list = features.flatten().tolist()  # Convertir a lista simple para JSON
+
+    # Guardar en la base de datos usando report_manager
+    report_manager = ReportManager(connection)
+    report_manager.save_report(result, time_taken)
+    
+    connection.close()
+
+    return jsonify({"probability": float(result), "features": features_list}), 200
 
 # Ejecutar la aplicación Flask
 if __name__ == "__main__":
