@@ -1,6 +1,11 @@
+import os
+
+# Forzar el uso de CPU en lugar de GPU en TensorFlow
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
+# Importar otras bibliotecas
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
 import tensorflow as tf
 import numpy as np
 from ssl_check import check_ssl
@@ -28,6 +33,7 @@ else:
 # Cargar el modelo entrenado
 model = tf.keras.models.load_model('modelo_fraude_v2.h5')
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
 
 # Registrar las rutas de todas las APIs
 @app.route('/api/check_ssl', methods=['POST'])
