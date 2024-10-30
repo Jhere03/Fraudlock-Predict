@@ -74,11 +74,11 @@ def get_feature_vector(url, connection):
         return np.array([0, 0, 0, 0, 0]).reshape(1, -1), 1.0000  # Características fraudulentas y probabilidad de 1.0
     
     apis = [
-        "http://127.0.0.1:5002/api/check_ssl",
-        "http://127.0.0.1:5001/api/check_url_similarity",
-        "http://127.0.0.1:5005/api/check_domain_security",
-        "http://127.0.0.1:5004/api/check_domain_popularity",
-        "http://127.0.0.1:5003/api/check_metadata"
+    "https://fraudlock-backend-production.up.railway.app/api/check_ssl",
+    "https://fraudlock-backend-production.up.railway.app/api/check_url_similarity",
+    "https://fraudlock-backend-production.up.railway.app/api/check_domain_security",
+    "https://fraudlock-backend-production.up.railway.app/api/check_domain_popularity",
+    "https://fraudlock-backend-production.up.railway.app/api/check_metadata"
     ]
     
     features = []
@@ -97,6 +97,11 @@ def predict_url(url, connection):
     else:
         prediction = model.predict(features)
         return prediction[0][0]
+
+# Ruta principal para la página de inicio
+@app.route('/')
+def home():
+    return "Bienvenido a Fraudlock Backend API. Para predecir una URL, usa /predict con un método POST."
 
 # Crear una ruta para recibir la URL y devolver el resultado
 @app.route('/predict', methods=['POST'])
