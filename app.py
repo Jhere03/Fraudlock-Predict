@@ -9,6 +9,11 @@ from urllib.parse import urlparse
 from datetime import datetime
 from conect_bd import get_db_connection
 from report_manager import ReportManager
+from ssl_check import check_ssl
+from url_similarity import check_url_similarity
+from domain_security import check_domain_security
+from populary_domain import check_domain_popularity
+from metadata_check import check_metadata
 
 app = Flask(__name__)
 CORS(app)
@@ -23,6 +28,7 @@ if connection:
     connection.close()
 else:
     print("Error al conectar a la base de datos")
+
 
 # Función para verificar si la URL o dominio está en la lista negra
 def is_url_or_domain_in_blacklist(url, connection):
@@ -48,10 +54,13 @@ def get_url_or_domain(url, api_endpoint):
 async def call_api_async(session, url, api_endpoint):
     try:
         formatted_url = get_url_or_domain(url, api_endpoint)
-        async with session.post(api_endpoint, json={"url": formatted_url}, timeout=20) as response:
+        async with session.post(api_endpoint, json={"url": formatted_url}, timeout=60) as response:
             response_data = await response.json()
             return response_data.get("ESTADO", "fraud")
-    except:
+    except asyncio.TimeoutError:
+        return "fraud"
+    except Exception as e:
+        print(f"Error al llamar a {api_endpoint}: {str(e)}")
         return "fraud"
 
 # Función asíncrona para obtener el vector de características
@@ -79,6 +88,28 @@ def predict_url(url):
     prediction = model.predict(features)
     return prediction[0][0]
 
+# Registrar las rutas de todas las APIs
+@app.route('/api/check_ssl', methods=['POST'])
+def check_ssl_route():
+    return check_ssl()
+
+@app.route('/api/check_url_similarity', methods=['POST'])
+def check_url_similarity_route():
+    return check_url_similarity()
+
+@app.route('/api/check_domain_security', methods=['POST'])
+def check_domain_security_route():
+    return check_domain_security()
+
+@app.route('/api/check_domain_popularity', methods=['POST'])
+def check_domain_popularity_route():
+    return check_domain_popularity()
+
+@app.route('/api/check_metadata', methods=['POST'])
+def check_metadata_route():
+    return check_metadata()
+
+
 # Ruta principal para la página de inicio
 @app.route('/')
 def home():
@@ -105,7 +136,7 @@ def predict():
     else:
         # Si no está en la lista negra, hacer la predicción
         result = predict_url(url)
-        features = asyncio.run(get_feature_vector_async(url))  # Cambiado aquí
+        features = asyncio.run(get_feature_vector_async(url))
 
     # Calcular el tiempo de ejecución
     end_time = datetime.now()
@@ -122,7 +153,6 @@ def predict():
     connection.close()
 
     return jsonify({"probability": float(result), "features": features_list, "time_taken": time_taken}), 200
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
