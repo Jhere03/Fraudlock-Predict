@@ -17,6 +17,14 @@ import requests
 app = Flask(__name__)
 CORS(app)
 
+# Probar conexión a la base de datos
+connection = get_db_connection()
+if connection:
+    print("Conexión a la base de datos exitosa")
+    connection.close()  # Cierra la conexión después de la prueba
+else:
+    print("Error al conectar a la base de datos")
+
 # Cargar el modelo entrenado
 model = tf.keras.models.load_model('modelo_fraude_v2.h5')
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
