@@ -3,6 +3,8 @@ from datetime import datetime
 from urllib.parse import urlparse
 import argparse
 import re
+import os
+
 
 app = Flask(__name__)
 
@@ -94,7 +96,6 @@ def check_domain_security():
         return jsonify({"domain": domain, "status": "Error", "reason": "Assuming fraud due to an error", "ESTADO": "fraud"}), 200
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=5000)
-    args = parser.parse_args()
-    app.run(debug=True, port=args.port)
+    port = int(os.environ.get("PORT", 5000))  # Usa el puerto asignado por el entorno
+    app.run(debug=True, host='0.0.0.0', port=port)  # Asegúrate de escuchar en todas las interfaces
+
