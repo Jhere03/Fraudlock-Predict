@@ -1,1 +1,1 @@
-web: python predict_url.py
+web: gunicorn --worker-tmp-dir /dev/shm predict_url:app --bind 0.0.0.0:$PORT
