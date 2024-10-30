@@ -16,7 +16,7 @@ class SiteValidator:
     def has_ssl_certificate(self):
         context = ssl.create_default_context()
         try:
-            with socket.create_connection((self.url, 443), timeout=400) as sock:
+            with socket.create_connection((self.url, 443), timeout=15) as sock:
                 with context.wrap_socket(sock, server_hostname=self.url) as ssock:
                     cert = ssock.getpeercert()
                     return True if cert else False
