@@ -1,34 +1,20 @@
 import os
 import asyncio
-import aiohttp  # Para llamadas asíncronas a APIs
+import aiohttp
+import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import tensorflow as tf
-import numpy as np
-from urllib.parse import urlparse
 from datetime import datetime
 from conect_bd import get_db_connection
 from report_manager import ReportManager
-from ssl_check import check_ssl
-from url_similarity import check_url_similarity
-from domain_security import check_domain_security
-from populary_domain import check_domain_popularity
-from metadata_check import check_metadata
+from urllib.parse import urlparse
+import tensorflow as tf
 
 app = Flask(__name__)
 CORS(app)
 
 # Cargar el modelo entrenado solo una vez
 model = tf.keras.models.load_model('modelo_fraude_v2.h5')
-
-# Probar conexión a la base de datos una sola vez en el arranque
-connection = get_db_connection()
-if connection:
-    print("Conexión a la base de datos exitosa")
-    connection.close()
-else:
-    print("Error al conectar a la base de datos")
-
 
 # Función para verificar si la URL o dominio está en la lista negra
 def is_url_or_domain_in_blacklist(url, connection):
@@ -56,29 +42,29 @@ async def call_api_async(session, url, api_endpoint):
         formatted_url = get_url_or_domain(url, api_endpoint)
         async with session.post(api_endpoint, json={"url": formatted_url}, timeout=60) as response:
             response_data = await response.json()
-            return response_data.get("ESTADO", "fraud")
+            # Convertir el estado devuelto a 0 (fraud) o 1 (legal)
+            return 1 if response_data.get("ESTADO") == "legal" else 0
     except asyncio.TimeoutError:
-        return "fraud"
+        return 0  # Asumir "fraud" en caso de timeout
     except Exception as e:
         print(f"Error al llamar a {api_endpoint}: {str(e)}")
-        return "fraud"
+        return 0  # Asumir "fraud" en caso de error
 
 # Función asíncrona para obtener el vector de características
 async def get_feature_vector_async(url):
     apis = [
-        "https://fraudlock-backend-production.up.railway.app/api/check_ssl",
-        "https://fraudlock-backend-production.up.railway.app/api/check_url_similarity",
-        "https://fraudlock-backend-production.up.railway.app/api/check_domain_security",
-        "https://fraudlock-backend-production.up.railway.app/api/check_domain_popularity",
-        "https://fraudlock-backend-production.up.railway.app/api/check_metadata"
+        "https://web-production-4432.up.railway.app/api/check_ssl",
+        "https://web-production-4432.up.railway.app/api/check_url_similarity",
+        "https://web-production-4432.up.railway.app/api/check_domain_security",
+        "https://web-production-4432.up.railway.app/api/check_domain_popularity",
+        "https://web-production-4432.up.railway.app/api/check_metadata"
     ]
 
     async with aiohttp.ClientSession() as session:
         tasks = [call_api_async(session, url, api) for api in apis]
         results = await asyncio.gather(*tasks)
 
-    features = [1 if status == "legal" else 0 for status in results]
-    return np.array(features).reshape(1, -1)
+    return np.array(results).reshape(1, -1)
 
 # Función para realizar la predicción usando el modelo de TensorFlow
 def predict_url(url):
@@ -88,32 +74,10 @@ def predict_url(url):
     prediction = model.predict(features)
     return prediction[0][0]
 
-# Registrar las rutas de todas las APIs
-@app.route('/api/check_ssl', methods=['POST'])
-def check_ssl_route():
-    return check_ssl()
-
-@app.route('/api/check_url_similarity', methods=['POST'])
-def check_url_similarity_route():
-    return check_url_similarity()
-
-@app.route('/api/check_domain_security', methods=['POST'])
-def check_domain_security_route():
-    return check_domain_security()
-
-@app.route('/api/check_domain_popularity', methods=['POST'])
-def check_domain_popularity_route():
-    return check_domain_popularity()
-
-@app.route('/api/check_metadata', methods=['POST'])
-def check_metadata_route():
-    return check_metadata()
-
-
 # Ruta principal para la página de inicio
 @app.route('/')
 def home():
-    return "Bienvenido a Fraudlock Backend API. Para predecir una URL, usa /predict con un método POST."
+    return "Bienvenido a Fraudlock Prediction API. Usa /predict con un método POST para predecir."
 
 # Ruta para la predicción de URLs
 @app.route('/predict', methods=['POST'])
@@ -156,3 +120,4 @@ def predict():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+
